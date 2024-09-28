@@ -63,9 +63,9 @@ def get_completed_trainings(data, trainings, fiscal_year, output_file_path):
         json.dump(training_results, output_file, indent=4)
 
 
-def get_valid_completions(completions):
+def get_most_recent_completions(completions):
     """
-    Get the most recent completion date for each unique training that has an expiry date.
+    Get the most recent completion date for each unique training.
 
     Args:
         completions (list): List of training completions with name, timestamp, and expiration.
@@ -81,7 +81,7 @@ def get_valid_completions(completions):
         timestamp = completion.get('timestamp')
         expiry = completion.get('expires')
         
-        if training_name and timestamp and expiry: # Trainings without an expiration are not applicable
+        if training_name and timestamp:
             completion_date = datetime.strptime(timestamp, "%m/%d/%Y")
             
             # Update if this completion is more recent than any previous one
@@ -91,8 +91,8 @@ def get_valid_completions(completions):
                     'expires': expiry
                 }
 
-    # Return the most recent completions with expiration dates
-    return {training_name: details['expires'] for training_name, details in most_recent.items()}
+    # Return the most recent completions
+    return most_recent
 
 
 def get_expired_or_expiring_trainings(data, reference_date, output_file_path):
@@ -106,27 +106,30 @@ def get_expired_or_expiring_trainings(data, reference_date, output_file_path):
     """
     results = []
 
-    # Check each person's most recent training completions for expiry status
+    # Get only the most recent training completions for each person
     for person in data:
-        most_recent_trainings = get_valid_completions(person.get('completions', []))
+        most_recent_trainings = get_most_recent_completions(person.get('completions', []))
         expired_or_expiring_trainings = []
         
-        for training_name, expiry_str in most_recent_trainings.items():
-            expiry_date = datetime.strptime(expiry_str, "%m/%d/%Y")
-            status = None
+        # Get the expiration date for each training
+        for training_name, details in most_recent_trainings.items():
+            expiry_str = details['expires']
+            if expiry_str:
+                expiry_date = datetime.strptime(expiry_str, "%m/%d/%Y")
+                status = None
 
-            # Determine if the training is expired or will expire within 30 days
-            if reference_date > expiry_date:
-                status = 'expired'
-            elif expiry_date <= reference_date + timedelta(days=30):
-                status = 'expires soon'
+                # Determine if the training is expired or will expire within 30 days
+                if reference_date > expiry_date:
+                    status = 'expired'
+                elif expiry_date <= reference_date + timedelta(days=30):
+                    status = 'expires soon'
                 
-            if status:
-                expired_or_expiring_trainings.append({
-                    'training': training_name,
-                    'status': status,
-                    # 'expiration_date': expiry_str
-                })
+                if status:
+                    expired_or_expiring_trainings.append({
+                        'training': training_name,
+                        'status': status,
+                        # 'expiration_date': expiry_str
+                    })
 
         # Add the person to the results if any trainings are expired or expiring soon
         if expired_or_expiring_trainings:
